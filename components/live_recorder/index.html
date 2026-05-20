@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <style>
+        :root { --primary: #FF4B4B; --text: #ffffff; }
+        body { margin: 0; padding: 0; background: transparent;
+               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+               color: var(--text); overflow: hidden; }
+        .container { display: flex; flex-direction: column; align-items: center;
+                     justify-content: center; padding: 10px; gap: 12px; }
+        .record-btn {
+            width: 84px; height: 84px; border-radius: 50%;
+            background: var(--primary); border: none; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 0 20px rgba(255, 75, 75, 0.3);
+            transition: transform 0.15s ease, box-shadow 0.3s ease;
+        }
+        .record-btn:hover { transform: scale(1.05);
+            box-shadow: 0 0 30px rgba(255, 75, 75, 0.5); }
+        .record-btn.active { animation: pulse 1.5s infinite; background: #ff1a1a; }
+        .record-btn.warming { opacity: 0.5; cursor: progress; }
+        .record-btn svg { width: 36px; height: 36px; fill: white; }
+        .status-text { font-size: 0.8rem; color: #888; min-height: 1.1rem; text-align: center; }
+        .audio-preview { width: 100%; max-width: 320px; margin-top: 4px; }
+        .audio-preview audio { width: 100%; }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(255,75,75,0.7); }
+            70% { box-shadow: 0 0 0 25px rgba(255,75,75,0); }
+            100% { box-shadow: 0 0 0 0 rgba(255,75,75,0); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <button id="record-btn" class="record-btn warming" disabled>
+            <svg id="mic-icon" viewBox="0 0 24 24">
+                <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+            </svg>
+            <svg id="stop-icon" viewBox="0 0 24 24" style="display:none">
+                <rect x="6" y="6" width="12" height="12"/>
+            </svg>
+        </button>
+        <div id="status" class="status-text">Preparing microphone…</div>
+        <div id="preview" class="audio-preview"></div>
+    </div>
+
+    <script>
+      const Streamlit = {
+        setComponentReady: () => window.parent.postMessage({isStreamlitMessage: true, type: "streamlit:componentReady", apiVersion: 1}, "*"),
+        setFrameHeight: (h) => window.parent.postMessage({isStreamlitMessage: true, type: "streamlit:setFrameHeight", height: h}, "*"),
+        setComponentValue: (v) => window.parent.postMessage({isStreamlitMessage: true, type: "streamlit:setComponentValue", value: v}, "*"),
+      };
+
+      const recordBtn = document.getElementById('record-btn');
+      const micIcon   = document.getElementById('mic-icon');
+      const stopIcon  = document.getElementById('stop-icon');
+      const statusEl  = document.getElementById('status');
+      const previewEl = document.getElementById('preview');
+
+      let micStream = null;
+      let mediaRecorder = null;
+      let audioChunks = [];
+      let isRecording = false;
+
+      // --- Pre-warm the mic on load so the first click starts recording instantly. ---
+      async function prewarmMic() {
+        if (!window.isSecureContext) {
+          statusEl.innerHTML = "<span style='color:#ff6b6b'>⚠ Browser blocks mic on non-HTTPS. Use localhost or HTTPS.</span>";
+          return;
+        }
+        try {
+          micStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }
+          });
+          recordBtn.classList.remove('warming');
+          recordBtn.disabled = false;
+          statusEl.innerText = "Tap to record";
+        } catch (err) {
+          statusEl.innerHTML = "<span style='color:#ff6b6b'>Mic access denied</span>";
+        }
+      }
+
+      recordBtn.onclick = () => {
+        if (!micStream) return;
+        isRecording ? stopRecording() : startRecording();
+      };
+
+      function startRecording() {
+        audioChunks = [];
+        previewEl.innerHTML = "";
+        mediaRecorder = new MediaRecorder(micStream, { audioBitsPerSecond: 128000 });
+        mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunks.push(e.data); };
+        mediaRecorder.onstop = () => {
+          const blob = new Blob(audioChunks, { type: 'audio/webm' });
+          const reader = new FileReader();
+          reader.readAsDataURL(blob);
+          reader.onloadend = () => {
+            const b64 = reader.result.split(',')[1];
+            // Push to Streamlit
+            Streamlit.setComponentValue({ audio: b64 });
+            // Local preview
+            const url = URL.createObjectURL(blob);
+            previewEl.innerHTML = `<audio controls src="${url}" controlslist="nodownload"></audio>`;
+            statusEl.innerText = "Recording complete";
+            Streamlit.setFrameHeight(document.body.scrollHeight);
+          };
+        };
+        mediaRecorder.start();
+        isRecording = true;
+        recordBtn.classList.add('active');
+        micIcon.style.display = 'none';
+        stopIcon.style.display = 'block';
+        statusEl.innerText = "Recording… tap to stop";
+      }
+
+      function stopRecording() {
+        if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+        isRecording = false;
+        recordBtn.classList.remove('active');
+        micIcon.style.display = 'block';
+        stopIcon.style.display = 'none';
+        statusEl.innerText = "Processing…";
+      }
+
+      // Auto-resize iframe to its content
+      const ro = new ResizeObserver(() => Streamlit.setFrameHeight(document.body.scrollHeight));
+      ro.observe(document.body);
+
+      Streamlit.setComponentReady();
+      Streamlit.setFrameHeight(220);
+
+      // Kick off mic permission/init immediately
+      prewarmMic();
+    </script>
+</body>
+</html>
