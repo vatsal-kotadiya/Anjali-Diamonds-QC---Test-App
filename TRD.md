@@ -1,1183 +1,1147 @@
 # Diamond QC — Technical Requirements Document
 
-**Version:** 1.0  
-**Date:** 2026-05-20  
-**Companion doc:** PRD v1.1  
-**Platform:** Flutter (Android primary, iOS stretch)
+**Version:** 2.0 (rewritten for Kotlin Multiplatform)
+**Date:** 2026-05-20
+**Companion doc:** PRD v1.1
+**Platform:** KMP — Jetpack Compose (Android) + SwiftUI (iOS)
 
 ---
 
-## 1. Project Structure
+## 1. Architecture Overview
 
 ```
-lib/
-├── main.dart
-├── app.dart                    # MaterialApp + router + theme
-├── core/
-│   ├── theme/
-│   │   ├── app_colors.dart
-│   │   ├── app_text_styles.dart
-│   │   ├── app_theme.dart
-│   │   └── app_dimensions.dart
-│   ├── router/
-│   │   └── app_router.dart     # GoRouter route definitions
-│   ├── network/
-│   │   ├── api_client.dart     # Dio instance + interceptors
-│   │   ├── auth_interceptor.dart
-│   │   └── endpoints.dart
-│   ├── storage/
-│   │   ├── secure_storage.dart # JWT tokens (flutter_secure_storage)
-│   │   └── local_db.dart       # Drift SQLite (offline queue)
-│   └── utils/
-│       ├── audio_utils.dart
-│       └── date_utils.dart
-├── features/
-│   ├── auth/
-│   │   ├── data/
-│   │   ├── domain/
-│   │   └── presentation/
-│   │       └── login_screen.dart
-│   ├── worker/
-│   │   ├── report/
-│   │   │   └── presentation/
-│   │   │       ├── report_screen.dart
-│   │   │       └── widgets/
-│   │   │           ├── report_type_tab_bar.dart
-│   │   │           ├── hint_banner.dart
-│   │   │           ├── diamond_id_field.dart
-│   │   │           ├── mic_button.dart
-│   │   │           ├── waveform_display.dart
-│   │   │           └── transcript_box.dart
-│   │   └── history/
-│   │       └── presentation/
-│   │           ├── history_screen.dart
-│   │           └── widgets/
-│   │               └── report_history_card.dart
-│   ├── dashboard/
-│   │   └── presentation/
-│   │       ├── dashboard_screen.dart
-│   │       └── widgets/
-│   │           ├── kpi_summary_row.dart
-│   │           ├── period_tab_bar.dart
-│   │           ├── defect_rate_chart.dart
-│   │           └── report_details_sheet.dart
-│   ├── chatbot/
-│   │   └── presentation/
-│   │       ├── chatbot_screen.dart
-│   │       └── widgets/
-│   │           ├── suggested_prompt_chip.dart
-│   │           ├── chat_bubble.dart
-│   │           └── chat_input_bar.dart
-│   ├── admin/
-│   │   ├── users/
-│   │   │   └── presentation/
-│   │   │       ├── users_list_screen.dart
-│   │   │       ├── user_detail_screen.dart
-│   │   │       ├── create_user_screen.dart
-│   │   │       └── widgets/
-│   │   │           ├── user_list_tile.dart
-│   │   │           ├── user_stats_row.dart
-│   │   │           └── report_card.dart
-│   │   └── settings/
-│   │       └── presentation/
-│   │           └── settings_screen.dart
-│   └── profile/
-│       └── presentation/
-│           ├── profile_screen.dart
-│           └── widgets/
-│               └── language_selector.dart
-└── shared/
-    └── widgets/
-        ├── app_scaffold.dart       # scaffold + bottom nav
-        ├── filter_chip_row.dart
-        ├── search_bar.dart
-        ├── severity_badge.dart
-        ├── report_type_tag.dart
-        ├── audio_player_tile.dart
-        └── loading_overlay.dart
+AnjalidDiamondsApp/
+├── androidApp/                       ← Jetpack Compose UI (Android)
+│   └── src/main/kotlin/com/anjali/android/
+│       ├── MainActivity.kt
+│       ├── DiamondApplication.kt     ← Koin init
+│       ├── navigation/AppNavHost.kt
+│       ├── theme/                    ← AppColors, AppTheme, AppTypography
+│       └── features/
+│           ├── auth/LoginScreen.kt
+│           ├── worker/ReportScreen.kt, HistoryScreen.kt
+│           ├── dashboard/DashboardScreen.kt, ReportDetailsScreen.kt
+│           ├── admin/UsersScreen.kt, UserDetailScreen.kt, CreateUserScreen.kt
+│           ├── chatbot/ChatbotScreen.kt
+│           └── profile/ProfileScreen.kt
+│
+├── iosApp/                           ← SwiftUI UI (iOS)
+│   └── iosApp/
+│       ├── DiamondApp.swift          ← Koin init via shared initKoin()
+│       ├── ContentView.swift
+│       ├── Navigation/AppRouter.swift
+│       └── Features/
+│           ├── Auth/LoginView.swift
+│           ├── Worker/ReportView.swift, HistoryView.swift
+│           ├── Dashboard/DashboardView.swift, ReportDetailsView.swift
+│           ├── Admin/UsersView.swift, UserDetailView.swift, CreateUserView.swift
+│           ├── Chatbot/ChatbotView.swift
+│           └── Profile/ProfileView.swift
+│
+└── shared/                           ← KMP shared module (business logic)
+    └── src/
+        ├── commonMain/kotlin/com/anjali/
+        │   ├── data/
+        │   │   ├── network/          ← Ktor client, interceptors, DTOs
+        │   │   ├── local/            ← SQLDelight DAOs + schema
+        │   │   └── repository/       ← ReportRepo, UserRepo, ChatRepo
+        │   ├── domain/
+        │   │   ├── model/            ← Report, User, AiAnalysis, DiamondChain
+        │   │   └── usecase/          ← SubmitReport, GetDashboard, SyncPending
+        │   ├── presentation/         ← ViewModels + UI state (StateFlow)
+        │   │   ├── AuthViewModel.kt
+        │   │   ├── ReportViewModel.kt
+        │   │   ├── HistoryViewModel.kt
+        │   │   ├── DashboardViewModel.kt
+        │   │   ├── UsersViewModel.kt
+        │   │   └── ChatViewModel.kt
+        │   └── platform/             ← expect declarations
+        │       ├── AudioRecorder.kt
+        │       ├── SecureStorage.kt
+        │       └── FileSystem.kt
+        ├── androidMain/kotlin/       ← actual implementations (Android)
+        └── iosMain/kotlin/           ← actual implementations (iOS)
 ```
 
 ---
 
-## 2. Design Tokens
+## 2. Shared vs Platform-Specific Split
 
-### 2.1 Colors — `app_colors.dart`
-
-```dart
-class AppColors {
-  // Brand
-  static const primary        = Color(0xFFE8491B); // orange — buttons, active tabs, mic
-  static const primaryDark    = Color(0xFF0F1A2E); // near-black navy — Sign In button
-  static const loginBg        = Color(0xFF3B0A0A); // dark maroon — login screen only
-
-  // Backgrounds
-  static const background     = Color(0xFFF5F5F5); // app background
-  static const surface        = Color(0xFFFFFFFF); // cards, sheets
-  static const inputFill      = Color(0xFFF0F0F0); // unfocused input bg
-
-  // Severity
-  static const severe         = Color(0xFFE8491B); // same as primary
-  static const moderate       = Color(0xFFFFC107); // amber
-  static const low            = Color(0xFF4CAF50); // green
-
-  // Status
-  static const activeGreen    = Color(0xFF4CAF50);
-  static const inactiveRed    = Color(0xFFE53935);
-
-  // Text
-  static const textPrimary    = Color(0xFF1A1A1A);
-  static const textSecondary  = Color(0xFF6B7280);
-  static const textHint       = Color(0xFF9CA3AF);
-
-  // Report type tags
-  static const receiveTagBg   = Color(0xFFEBF5FF);
-  static const receiveTagFg   = Color(0xFF1D72E8);
-  static const problemTagBg   = Color(0xFFFFF0EB);
-  static const problemTagFg   = Color(0xFFE8491B);
-}
-```
-
-### 2.2 Dimensions — `app_dimensions.dart`
-
-```dart
-class AppDimensions {
-  // Border radius
-  static const radiusCard     = 16.0;
-  static const radiusInput    = 12.0;
-  static const radiusPill     = 100.0; // fully rounded buttons/tabs
-  static const radiusChip     = 8.0;
-
-  // Spacing
-  static const pagePadding    = 16.0;
-  static const cardPadding    = 16.0;
-  static const sectionGap     = 16.0;
-  static const itemGap        = 12.0;
-
-  // Component heights
-  static const inputHeight    = 52.0;
-  static const buttonHeight   = 52.0;
-  static const bottomNavHeight = 64.0;
-  static const micButtonSize  = 80.0;
-}
-```
-
-### 2.3 Text Styles — `app_text_styles.dart`
-
-```dart
-class AppTextStyles {
-  static const appBarTitle    = TextStyle(fontSize: 18, fontWeight: FontWeight.w700);
-  static const sectionLabel   = TextStyle(fontSize: 11, fontWeight: FontWeight.w700,
-                                  letterSpacing: 0.8, color: AppColors.textSecondary);
-  static const cardTitle      = TextStyle(fontSize: 15, fontWeight: FontWeight.w600);
-  static const body           = TextStyle(fontSize: 14, fontWeight: FontWeight.w400);
-  static const caption        = TextStyle(fontSize: 12, fontWeight: FontWeight.w400,
-                                  color: AppColors.textSecondary);
-  static const kpiValue       = TextStyle(fontSize: 22, fontWeight: FontWeight.w700);
-  static const kpiLabel       = TextStyle(fontSize: 12, fontWeight: FontWeight.w500,
-                                  color: AppColors.textSecondary);
-  static const buttonLabel    = TextStyle(fontSize: 15, fontWeight: FontWeight.w600,
-                                  color: Colors.white);
-}
-```
-
----
-
-## 3. Navigation
-
-### Router — GoRouter
-
-```
-/login                          → LoginScreen
-/worker
-  /report                       → ReportScreen (default tab: receive)
-  /history                      → HistoryScreen
-  /profile                      → ProfileScreen
-/management
-  /dashboard                    → DashboardScreen
-  /dashboard/:processId         → ReportDetailsScreen
-  /chatbot                      → ChatbotScreen
-  /profile                      → ProfileScreen
-/admin
-  /dashboard                    → DashboardScreen
-  /dashboard/:processId         → ReportDetailsScreen
-  /users                        → UsersListScreen
-  /users/create                 → CreateUserScreen
-  /users/:userId                → UserDetailScreen
-  /users/:userId/edit           → EditUserScreen
-  /chatbot                      → ChatbotScreen
-  /settings                     → SettingsScreen
-  /profile                      → ProfileScreen
-```
-
-### Shell routes & bottom navigation
-
-Each role has a `ShellRoute` wrapping its tabs with a shared `AppScaffold` that renders the role-specific `BottomNavigationBar`.
-
-```dart
-// Worker shell tabs
-enum WorkerTab { report, history, profile }
-
-// Management shell tabs
-enum ManagementTab { dashboard, chatbot, profile }
-
-// Admin shell tabs
-enum AdminTab { dashboard, users, chatbot, profile }
-```
-
-**Transitions:**
-- Tab switches: no animation (instant swap)
-- Push to sub-screen (e.g. ReportDetails, UserDetail): slide-from-right (`CupertinoPageRoute` or `CustomTransitionPage` with `SlideTransition`)
-- Modal sheets (filters, dropdowns): slide-from-bottom with `showModalBottomSheet`
-
----
-
-## 4. Screen-by-Screen Technical Specification
-
-### 4.1 Login Screen
-
-**Widget tree (simplified):**
-```
-Scaffold(backgroundColor: AppColors.loginBg)
-└── Center
-    └── Column
-        ├── Text("Anjali Diamonds")          // white, bold, 28sp
-        ├── Text("Sign in to your account")  // textSecondary, 14sp
-        └── Card(borderRadius: 20)
-            └── Column
-                ├── _LabeledInput("USERNAME")
-                ├── _LabeledInput("PASSWORD", obscureText: true)
-                ├── Row [ Checkbox, Text("Stay logged in") ]
-                └── ElevatedButton("Sign In")  // primaryDark bg, pill shape
-```
-
-**State:**
-- `usernameController`, `passwordController` (`TextEditingController`)
-- `stayLoggedIn` bool — if true, persist refresh token on successful login
-- `isLoading` bool — shows `CircularProgressIndicator` inside button during API call
-
-**Input field spec:**
-- Background: `AppColors.inputFill`
-- Focused border: 1.5 dp `AppColors.primary`
-- Unfocused border: 1 dp `Color(0xFFE5E7EB)`
-- Label: ALL CAPS, `AppTextStyles.sectionLabel`, sits above the field (not floating)
-
-**Sign In button:**
-- Full width, height 52 dp, `borderRadius: AppDimensions.radiusPill`
-- Color: `AppColors.primaryDark`
-- On tap: validate → `POST /auth/login` → store JWT → navigate to role home
-
-**Error handling:**
-- Invalid credentials: red text below password field
-- Account inactive: same red text
-- Network error: `SnackBar` at bottom
-
----
-
-### 4.2 Worker Report Screen
-
-**State management:** `ReportNotifier` (Riverpod `AsyncNotifier` or BLoC)
-
-```dart
-enum ReportType { receive, problem }
-enum RecordingState { idle, recording, recorded }
-enum SubmissionState { idle, uploading, transcribing, translating, analysing, success, error }
-```
-
-**Widget tree:**
-```
-AppScaffold(title: "Anjali Diamonds", tab: WorkerTab.report)
-└── Column
-    ├── ReportTypeTabBar           // orange pill toggle
-    ├── HintBanner                 // dismissible, updates per tab
-    ├── DiamondIdField             // dropdown + QR icon
-    ├── Expanded
-    │   └── Column(mainAxisAlignment: center)
-    │       ├── MicButton          // 80dp circle, orange
-    │       ├── WaveformDisplay    // shown after recording
-    │       └── TranscriptBox      // auto-filled after STT
-    └── SubmitButton               // orange pill, pinned bottom
-```
-
-#### ReportTypeTabBar
-```dart
-// Two pills in a Row, inside a rounded container
-// Active: filled orange pill with white text
-// Inactive: transparent with border, textPrimary text
-// Switching tab: updates ReportType in state, swaps hint text
-```
-
-#### HintBanner
-```dart
-Container(
-  color: Colors.white,
-  child: Row(
-    children: [
-      Icon(Icons.info_outline, size: 16, color: textSecondary),
-      Expanded(child: Text(hintText)),
-      IconButton(Icons.close, onPressed: dismiss),
-    ],
-  ),
-)
-// dismissed state stored in local bool, not persisted
-```
-
-#### DiamondIdField
-```dart
-// Styled dropdown (DropdownButtonFormField or custom overlay)
-// Right trailing: IconButton with QR scanner icon (camera_alt or qr_code)
-// QR tap: launch mobile_scanner package, on scan fill the field value
-// Height: AppDimensions.inputHeight
-// Border: same as login inputs, focus = orange
-```
-
-**Open question #7 resolution options:**
-- Option A (dropdown): pre-load known diamond IDs from `/diamonds` endpoint
-- Option B (free-text + QR): `TextFormField` with `keyboardType: TextInputType.text`, QR button launches scanner overlay
-
-#### MicButton
-```dart
-GestureDetector(
-  onTap: toggleRecording,
-  child: AnimatedContainer(
-    width: 80, height: 80,
-    decoration: BoxDecoration(
-      shape: BoxShape.circle,
-      color: isRecording ? AppColors.primary.withOpacity(0.8) : AppColors.primary,
-      boxShadow: isRecording ? [pulseShadow] : [],
-    ),
-    child: Icon(Icons.mic, color: Colors.white, size: 36),
-  ),
-)
-// While recording: animate a pulsing ring around the circle using AnimationController
-```
-
-**Audio recording:** `record` package (`AudioRecorder`)
-- Format: AAC (`.m4a`) or WAV — WAV preferred for Sarvam compatibility
-- Sample rate: 16 kHz mono (Sarvam requirement)
-- File saved to app's temp directory; path passed to upload on submit
-
-#### WaveformDisplay
-```dart
-// Use audio_waveforms package
-// PlayerController for playback scrubbing
-// Orange bars on white/light background
-// Shown only when RecordingState == recorded
-```
-
-#### TranscriptBox
-```dart
-Container(
-  decoration: BoxDecoration(
-    color: Colors.white,
-    borderRadius: BorderRadius.circular(AppDimensions.radiusInput),
-    border: Border.all(color: Color(0xFFE5E7EB)),
-  ),
-  child: TextField(
-    controller: transcriptController,
-    maxLines: 4,
-    readOnly: true,               // auto-filled from STT; not user-editable in v1
-    decoration: InputDecoration(labelText: "Transcript"),
-  ),
-)
-```
-
-#### SubmitButton
-```dart
-// Disabled: grey, until diamondId != null && recordingState == recorded
-// Loading: replace label with CircularProgressIndicator (white, size 20)
-// Progress label: "Uploading…" / "Transcribing…" / "Translating…" / "Analysing…"
-// Changes text every ~2s based on SubmissionState enum
-```
-
-**Submission flow (async):**
-```
-1. Set state → uploading
-   PUT /audio/upload  (multipart, returns file_uuid)
-2. Set state → transcribing
-   POST /sarvam/stt   (server calls Sarvam saarika:v2)
-3. Set state → translating
-   POST /sarvam/translate  (server calls Sarvam saaras:v2)
-4. Set state → analysing
-   POST /reports      (saves report + triggers Gemini async)
-5. Set state → success
-   Show transcript + severity badge
-   If chain result: show attribution banner
-```
-
-**Offline path:** if no network detected before step 1, serialize `{reportType, diamondId, audioPath, workerId}` to local SQLite `pending_reports` table, show "Queued" toast.
-
----
-
-### 4.3 Worker History Screen
-
-**Data:** `GET /reports?worker_id=me&limit=50&offset=0`
-
-**Widget tree:**
-```
-Scaffold(appBar: BackAppBar("History"))
-└── Column
-    ├── SearchBar(hint: "Search by Diamond ID…")
-    ├── FilterChipRow(options: ["All Types", "Receive Report", "Problem Report"])
-    └── ListView.builder
-        └── ReportHistoryCard (per item)
-```
-
-#### ReportHistoryCard
-```dart
-Container(
-  margin: EdgeInsets.symmetric(vertical: 6, horizontal: 16),
-  padding: EdgeInsets.all(14),
-  decoration: BoxDecoration(
-    color: Colors.white,
-    borderRadius: BorderRadius.circular(AppDimensions.radiusCard),
-  ),
-  child: Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Row(
-        children: [
-          StatusDot(color: severityColor),      // 8dp filled circle
-          Text(diamondId, fontWeight: bold),
-          Spacer(),
-          Text(formattedTime, style: caption),
-        ],
-      ),
-      SizedBox(height: 6),
-      ReportTypeTag(type: reportType),           // blue/orange pill
-      SizedBox(height: 6),
-      Text(transcriptSnippet, maxLines: 2, overflow: ellipsis),
-    ],
-  ),
-)
-// Tap → navigate to /worker/report/:id detail (not in scope for v1 — open question)
-```
-
-**Search:** client-side filter on loaded list (no separate API call for v1)
-
-**Filter:** chip toggles `All Types` / `Receive Report` / `Problem Report` — filters `ListView` items
-
----
-
-### 4.4 Dashboard Screen (Management + Admin)
-
-**Data:** `GET /dashboard?period=daily|weekly|monthly`  
-**Auto-refresh:** `Timer.periodic(Duration(seconds: 10), _refresh)` — cancelled in `dispose()`
-
-**Widget tree:**
-```
-AppScaffold(title: "Anjali Diamonds")
-└── Column
-    ├── KpiSummaryRow
-    ├── PeriodTabBar            // Daily · Weekly · Monthly
-    └── Expanded
-        └── SingleChildScrollView
-            └── Column
-                ├── Text("Defect Rate by Process")
-                └── DefectRateChart
-```
-
-#### KpiSummaryRow
-```dart
-Row(
-  children: [
-    KpiCard(value: "10", label: "TOTAL REPORTS"),
-    KpiCard(value: "6", label: "EMPLOYEES INVOLVED", valueColor: Colors.blue),
-    SeverityKpiCard(severe: 5, moderate: 2, low: 1),
-  ],
-)
-// Each card: white rounded container, value in kpiValue style, label in kpiLabel style
-// SeverityKpiCard: stacked colored Text rows
-```
-
-#### PeriodTabBar
-```dart
-// Underline-style tab bar (not pills)
-// Active tab: orange bottom border 2dp + orange text
-// Inactive: textSecondary text, no border
-// Switching period: re-fetches dashboard data
-```
-
-#### DefectRateChart
-```dart
-// Custom painter OR fl_chart HorizontalBarChart
-// Y-axis: process names (left-aligned text)
-// X-axis: hidden (no labels)
-// Bars: orange filled rectangles, height ~12dp, rounded right end
-// Value label: Text at bar tip, right-aligned
-// Row height: 48dp per process
-// Chart height = processCount * 48dp
-
-// Tap interaction:
-// GestureDetector on each bar row → push ReportDetailsScreen(processId, period)
-```
-
-**Implementation note:** use `fl_chart` `BarChart` rotated, or build a custom `ListView` where each row has a `FractionallySizedBox` for the bar width (simpler, no chart lib complexity for this design).
-
----
-
-### 4.5 Report Details Screen
-
-**Route:** `/dashboard/:processId` with `period` query param  
-**Data:** `GET /reports?process_id=:id&period=daily|weekly|monthly`
-
-**Widget tree:**
-```
-Scaffold
-├── AppBar(title: "Report Details", subtitle: "$processName · $period")
-│   └── IconButton(Icons.close)
-└── Column
-    ├── StatsRow(totalReports, workers, defectPercent)
-    ├── SeverityChipsBar(severe, moderate, low)
-    ├── SearchBar("Search reports…")
-    ├── Row [ FilterDropdown("All Types"), FilterDropdown("All Severity"), SortButton ]
-    └── Expanded → ListView.builder → ReportCard
-```
-
-#### SeverityChipsBar
-```dart
-Column(
-  children: [
-    Row(children: [
-      SeverityChip(AppColors.severe, "5 Severe"),
-      SeverityChip(AppColors.moderate, "2 Moderate"),
-      SeverityChip(AppColors.low, "1 Low"),
-    ]),
-    SizedBox(height: 8),
-    SeverityGradientBar(),   // LinearGradient red→amber→green, borderRadius pill
-  ],
-)
-```
-
-#### ReportCard
-```dart
-Container(
-  decoration: BoxDecoration(color: Colors.white, borderRadius: 12),
-  child: Column(
-    children: [
-      Row([StatusDot, DiamondIdBadge, ReportTypeTag, SeverityBadge]),
-      Text("$workerName · Dept: $dept", style: caption),
-      SizedBox(height: 8),
-      Text(gujaratiTranscript, maxLines: 3),
-      SizedBox(height: 8),
-      AudioPlayerTile(url: audioUrl, duration: durationSeconds),
-      Row([Text(formattedDateTime), Spacer(), DefectTypeTag(defectType)]),
-    ],
-  ),
-)
-```
-
-#### AudioPlayerTile
-```dart
-// Uses just_audio package
-// UI: orange circular play/pause button + WaveformBar (static, not interactive — use
-//     audio_waveforms PlayerController for interactive scrubbing if needed)
-//     + elapsed/total time Text ("0:08/0:08")
-// State: playing / paused
-// Only one player active at a time — use a shared AudioPlayerManager singleton
-```
-
----
-
-### 4.6 Diamond Assistant (Chatbot) Screen
-
-**Data:** stateful conversation; `POST /chat` with `{messages: [...], role: "admin|management"}`
-
-**Widget tree:**
-```
-Scaffold
-├── AppBar
-│   ├── leading: BackButton
-│   ├── title: Column [ "Diamond Assistant", OnlineIndicator ]
-│   └── actions: [ TextButton("Clear") ]
-└── Column
-    ├── Expanded
-    │   └── ListView.builder(reverse: true)
-    │       ├── WelcomeCard          // shown when messages.isEmpty
-    │       ├── SuggestedPromptChips // shown when messages.isEmpty
-    │       └── ChatBubble (per msg)
-    └── ChatInputBar
-```
-
-#### OnlineIndicator
-```dart
-Row(children: [
-  Container(width: 8, height: 8, decoration: BoxDecoration(
-    color: AppColors.activeGreen, shape: BoxShape.circle)),
-  SizedBox(width: 4),
-  Text("ONLINE", style: TextStyle(fontSize: 10, color: AppColors.activeGreen)),
-])
-```
-
-#### WelcomeCard
-```dart
-// Centered card with orange robot avatar circle (80dp), greeting text, description
-// Shown only when conversation is empty
-```
-
-#### SuggestedPromptChips
-```dart
-// Wrap widget with 3 chips
-// Chip style: white background, rounded border, leading icon, body text
-// Tap: inserts text into input and sends immediately
-const suggestions = [
-  (Icons.trending_up, "Top defective workers this month"),
-  (Icons.warning_amber, "Severe defects today"),
-  (Icons.history,       "Last night's shift summary"),
-];
-```
-
-#### ChatBubble
-```dart
-// User message: right-aligned, orange background, white text, rounded corners (all + bottom-right flat)
-// AI message: left-aligned, white card, leading orange robot avatar icon, textPrimary
-// AI messages support basic markdown: bold via **text**, numbered lists
-```
-
-#### ChatInputBar
-```dart
-Container(
-  decoration: BoxDecoration(color: Colors.white, boxShadow: [...]),
-  child: Row(
-    children: [
-      IconButton(Icons.attach_file, color: textSecondary),   // v1: noop or hidden
-      Expanded(child: TextField(hint: "Ask anything…")),
-      IconButton(Icons.mic, color: textSecondary),            // voice-to-text for query
-      CircleAvatar(
-        backgroundColor: AppColors.primary,
-        child: IconButton(Icons.send, color: Colors.white),
-      ),
-    ],
-  ),
-)
-// Mic: record short query, run STT, fill text field (same Sarvam STT pipeline)
-// Send: disabled while AI is responding (show typing indicator)
-```
-
-**Typing indicator:** three animated dots (`...`) shown as an AI bubble while awaiting response.
-
-**Clear:** resets conversation state; no server call needed (v1 chat is stateless).
-
----
-
-### 4.7 Profile Screen (All Roles)
-
-**Shared widget, renders differently by role (Worker / Management / Admin)**
-
-**Widget tree:**
-```
-Scaffold(appBar: BackAppBar(roleTitle))
-└── SingleChildScrollView
-    └── Column
-        ├── ProfileHeaderCard
-        ├── AccountCard
-        ├── LanguageCard
-        └── SignOutCard
-```
-
-#### ProfileHeaderCard
-```dart
-Container(
-  color: Colors.white, borderRadius: 16,
-  child: Row(
-    children: [
-      CircleAvatar(
-        radius: 28,
-        backgroundColor: AppColors.primary,
-        child: Text(initial, style: TextStyle(color: Colors.white, fontSize: 22)),
-      ),
-      // Edit pencil overlay at bottom-right of avatar: small orange circle with edit icon
-      Column(children: [
-        Text(name, style: cardTitle),
-        Text(empCode, style: caption),
-      ]),
-    ],
-  ),
-)
-```
-
-#### AccountCard
-```dart
-Container(
-  color: Colors.white, borderRadius: 16,
-  child: Column(
-    children: [
-      Row([ Text("ACCOUNT", style: sectionLabel), TextButton("Edit") ]),
-      Divider(),
-      _InfoRow("USERNAME", username),
-      _InfoRow("DEPARTMENT", department),
-      _InfoRow("PROCESS", process),     // hidden for management/admin
-      _InfoRow("Mobile", mobile),
-      _InfoRow("ADDRESS", address ?? "—"),
-    ],
-  ),
-)
-// Edit tap → opens EditProfileSheet (bottom sheet with editable fields)
-```
-
-#### LanguageCard
-```dart
-Container(
-  color: Colors.white, borderRadius: 16,
-  child: Column(
-    children: [
-      Text("Language", style: cardTitle),
-      SizedBox(height: 12),
-      Row(children: [
-        LanguagePill(label: "English", sublabel: "English",  selected: lang == 'en'),
-        LanguagePill(label: "ગુજરાતી", sublabel: "Gujarati", selected: lang == 'gu'),
-        LanguagePill(label: "हिंदी",   sublabel: "Hindi",    selected: lang == 'hi'),
-      ]),
-    ],
-  ),
-)
-
-// LanguagePill:
-// Selected: orange outlined circle + orange text
-// Unselected: plain text
-// Tap: update language_pref via PATCH /users/me, re-load ARB locale
-```
-
-#### SignOutCard
-```dart
-Container(
-  color: Colors.white, borderRadius: 16,
-  child: ListTile(
-    leading: Container(
-      padding: 8,
-      decoration: BoxDecoration(color: Color(0xFFFFEBEB), borderRadius: 10),
-      child: Icon(Icons.logout, color: AppColors.inactiveRed),
-    ),
-    title: Text("Sign Out", style: TextStyle(color: AppColors.inactiveRed, fontWeight: w600)),
-    onTap: _confirmSignOut,
-  ),
-)
-// Tap: show ConfirmDialog ("Are you sure?") → on confirm: clear tokens, navigate /login
-```
-
----
-
-### 4.8 Admin — Users List Screen
-
-**Data:** `GET /users?role=&department=&status=&search=&page=1`  
-**Pagination:** infinite scroll (load next page when user scrolls within 200dp of end)
-
-**Widget tree:**
-```
-Scaffold
-├── AppBar(title: "Users", subtitle: "24 Users", actions: [AddButton])
-└── Column
-    ├── SearchBar("Search by name, username or emp code…")
-    ├── FilterChipRow(["Role ▾", "Department ▾", "Status ▾"])
-    └── Expanded → ListView.builder → UserListTile
-```
-
-#### UserListTile
-```dart
-ListTile(
-  leading: Row(children: [
-    StatusDot(isActive),             // 10dp circle, green/red
-    SizedBox(width: 8),
-    Text(index.toString(), style: caption),
-  ]),
-  title: Text(name, style: cardTitle),
-  subtitle: Text("$empCode · $roleTitle", style: caption),
-  trailing: Text(factoryName, style: caption),
-)
-// Divider between tiles
-// Tap → push UserDetailScreen
-```
-
-**Filter bottom sheets:** tapping each chip opens a `showModalBottomSheet` with a list of options (radio-style); selected option shown in chip label.
-
----
-
-### 4.9 Admin — User Detail Screen
-
-**Data:** `GET /users/:id` + `GET /users/:id/reports`
-
-**Widget tree:**
-```
-Scaffold
-├── AppBar(title: name, subtitle: "$factory · $status", actions: [DeleteButton])
-└── SingleChildScrollView
-    └── Column
-        ├── UserStatsGrid
-        ├── UserDetailsCard
-        └── RecentReportsSection
-```
-
-#### UserStatsGrid
-```dart
-// 3-column × 2-row grid
-GridView.count(
-  crossAxisCount: 3, shrinkWrap: true,
-  children: [
-    StatCell("TOTAL REPORTS", totalReports, Colors.black),
-    StatCell("SEVERE",         severe,       AppColors.severe),
-    StatCell("MODERATE",       moderate,     AppColors.moderate),
-    StatCell("LOW",            low,          AppColors.low),
-    StatCell("FAULT RATE",     "$faultRate%", AppColors.inactiveRed),
-    StatCell("STATUS",         status,        statusColor),
-  ],
-)
-// Fault Rate = (problem reports / total reports * 100).toStringAsFixed(0) + "%"
-```
-
-#### UserDetailsCard
-```dart
-// White card with "DETAILS" label + Edit button
-// _DetailRow widgets for each field:
-//   Emp Code, Username, Password (masked + eye toggle), Role, Department,
-//   Factory, Floor, Table, Process, Joining Date, Mobile, Address
-// Password row: Row [ masked text, Spacer, IconButton(eye) ]
-//   eye tap: toggles _showPassword bool, rebuilds with cleartext vs "●●●●●●●●"
-```
-
-#### RecentReportsSection
-```dart
-Column(
-  children: [
-    Text("Recent Reports ($count)", style: cardTitle),
-    Row([ FilterDropdown("All Types"), FilterDropdown("All Severity") ]),
-    ...reportCards,
-  ],
-)
-// Uses same ReportCard widget as Report Details screen
-```
-
-**Delete button:** red outlined button top-right of AppBar  
-On tap → `ConfirmDialog` ("Delete [name]? This cannot be undone.") → `DELETE /users/:id` → pop + refresh list
-
----
-
-### 4.10 Admin — Create / Edit User Screen
-
-**Widget tree:**
-```
-Scaffold(appBar: BackAppBar("Create User"))
-└── SingleChildScrollView
-    └── Column
-        ├── EmpCodeSection
-        ├── IdentitySection
-        ├── AssignmentSection
-        ├── ContactSection
-        └── Padding → CreateUserButton
-```
-
-#### EmpCodeSection
-```dart
-// White card
-Row(children: [
-  Expanded(child: _LabeledInput("Factory")),    // 3-char, e.g. "vaw"
-  SizedBox(width: 8),
-  Expanded(child: _LabeledInput("Floor")),      // 2-digit
-  SizedBox(width: 8),
-  Expanded(child: _LabeledInput("Table")),      // 2-digit
-])
-SizedBox(height: 12)
-// Auto-generated emp code: reacts to factory/floor/table onChange
-//   → debounced GET /emp-code/next?factory=&floor=&table= → updates read-only field
-Container(
-  color: AppColors.inputFill,
-  child: Text(empCode),                        // e.g. "vaw03010001"
-)
-Text("Auto-generated from Factory + Floor + Table", style: caption)
-```
-
-#### IdentitySection
-```dart
-// White card
-_LabeledInput("Full Name")
-_LabeledDropdown("Role", options: ["Admin", "Management", "Worker"])
-Row([
-  Expanded(child: _LabeledInput("Username")),
-  SizedBox(width: 8),
-  Expanded(child: _LabeledPasswordInput("Password")),  // eye toggle
-])
-```
-
-#### AssignmentSection
-```dart
-// White card
-_LabeledDropdown("Department", options: departmentList)
-_LabeledDropdown("Process", options: processList)
-Text("Process is required only for workers", style: caption)
-// Process dropdown disabled when role != Worker
-```
-
-#### CreateUserButton
-```dart
-SizedBox(
-  width: double.infinity, height: AppDimensions.buttonHeight,
-  child: ElevatedButton.icon(
-    icon: Icon(Icons.add),
-    label: Text("Create User"),
-    style: ElevatedButton.styleFrom(
-      backgroundColor: AppColors.primary,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppDimensions.radiusPill)),
-    ),
-    onPressed: _submitForm,
-  ),
-)
-```
-
-**Validation:**
-- All fields required except Address
-- Username: no spaces, min 3 chars
-- Password: min 4 chars (plaintext per spec)
-- Process: required only when role == Worker
-- Show inline error text below field on submit
-
----
-
-## 5. Shared Widgets
-
-### SeverityBadge
-```dart
-// Small pill
-Container(
-  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-  decoration: BoxDecoration(
-    color: severityColor.withOpacity(0.12),
-    borderRadius: BorderRadius.circular(AppDimensions.radiusPill),
-    border: Border.all(color: severityColor, width: 0.5),
-  ),
-  child: Row(children: [
-    Container(width: 6, height: 6, decoration: BoxDecoration(
-      color: severityColor, shape: BoxShape.circle)),
-    SizedBox(width: 4),
-    Text(label, style: TextStyle(color: severityColor, fontSize: 11, fontWeight: w600)),
-  ]),
-)
-```
-
-### ReportTypeTag
-```dart
-// "RECEIVE" → blue pill   "PROBLEM" → orange pill
-Container(
-  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-  decoration: BoxDecoration(
-    color: isReceive ? AppColors.receiveTagBg : AppColors.problemTagBg,
-    borderRadius: BorderRadius.circular(6),
-  ),
-  child: Text(label, style: TextStyle(
-    color: isReceive ? AppColors.receiveTagFg : AppColors.problemTagFg,
-    fontSize: 11, fontWeight: w600)),
-)
-```
-
-### FilterDropdown
-```dart
-// Outlined pill with chevron icon
-// Tap: showModalBottomSheet with radio list
-OutlinedButton.icon(
-  icon: Text(selectedLabel),
-  label: Icon(Icons.keyboard_arrow_down),
-  style: OutlinedButton.styleFrom(
-    side: BorderSide(color: Color(0xFFE5E7EB)),
-    shape: StadiumBorder(),
-    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-  ),
-)
-```
-
-### AppScaffold
-```dart
-// Wraps every role screen
-// Renders the correct BottomNavigationBar for the current role
-// Active tab icon: AppColors.primary filled
-// Inactive tab icon: AppColors.textSecondary
-// Background: white, no elevation, top border 1dp Color(0xFFE5E7EB)
-// BottomNavigationBar type: fixed (no shifting animation)
-```
-
----
-
-## 6. State Management
-
-**Chosen approach:** Riverpod (`flutter_riverpod`)
-
-| Provider | Type | Purpose |
+### Shared (commonMain) — write once
+| Layer | What | Library |
 |---|---|---|
-| `authProvider` | `AsyncNotifierProvider` | Login, token refresh, role |
-| `reportProvider` | `AsyncNotifierProvider` | Report screen state + submission |
-| `historyProvider` | `FutureProvider.family` | Worker's report list |
-| `dashboardProvider` | `AsyncNotifierProvider` | Dashboard data + auto-refresh |
-| `reportDetailsProvider` | `FutureProvider.family` | Per-process drill-down |
-| `usersProvider` | `AsyncNotifierProvider` | Paginated user list + filters |
-| `userDetailProvider` | `FutureProvider.family` | Single user + their reports |
-| `chatProvider` | `NotifierProvider` | Conversation messages |
-| `audioPlayerProvider` | `NotifierProvider` | Singleton AudioPlayer manager |
-| `localeProvider` | `NotifierProvider` | Current app locale |
+| Networking | Ktor HttpClient, all API calls, JWT interceptor | `ktor-client-core` |
+| Serialization | All request/response data classes | `kotlinx-serialization-json` |
+| Local DB | Offline queue, SQLDelight queries | `SQLDelight` |
+| Coroutines | All async, StateFlow, channels | `kotlinx-coroutines-core` |
+| DI | Koin modules, all deps wired here | `koin-core` |
+| ViewModels | StateFlow-based, consumed by both platforms | `lifecycle-viewmodel` (KMP) |
+| Domain models | `Report`, `User`, `AiAnalysis`, `DiamondChain` | Plain Kotlin data classes |
+| Date/time | Timestamps, period filtering | `kotlinx-datetime` |
+| Preferences | Language pref, non-sensitive settings | `multiplatform-settings` |
 
----
-
-## 7. API Client
-
-**Package:** `dio` + `dio_cache_interceptor` (optional)
-
-```dart
-// auth_interceptor.dart
-// onRequest: attach "Authorization: Bearer <access_token>"
-// onError (401): attempt token refresh via /auth/refresh
-//   success → retry original request with new token
-//   failure → clear tokens, redirect to /login
-```
-
-**Base response wrapper:**
-```dart
-class ApiResponse<T> {
-  final T? data;
-  final String? error;
-  final int statusCode;
-}
-```
-
-**Error states mapped to UI:**
-| HTTP | UI behaviour |
-|---|---|
-| 401 | Auto-refresh; if fails → force logout |
-| 403 | SnackBar "You don't have permission" |
-| 422 | Inline form validation errors |
-| 5xx | SnackBar "Server error — try again" |
-| Network | SnackBar "No connection" + queue if on submit |
-
----
-
-## 8. Offline Queue
-
-**Package:** `drift` (type-safe SQLite ORM for Flutter)
-
-```dart
-// pending_reports table
-class PendingReports extends Table {
-  IntColumn get id        => integer().autoIncrement()();
-  TextColumn get workerId => text()();
-  TextColumn get reportType => text()();   // receive | problem
-  TextColumn get diamondId  => text()();
-  TextColumn get audioPath  => text()();   // local file path
-  DateTimeColumn get createdAt => dateTime()();
-  TextColumn get syncStatus => text().withDefault(Constant('pending'))();
-  // pending | uploading | failed
-  IntColumn get retryCount => integer().withDefault(Constant(0))();
-}
-```
-
-**Sync service:** `PendingSyncService` — runs as a `WorkManager` one-time task when network becomes available (listen via `connectivity_plus`)
-
-```
-For each pending row (ordered by createdAt ASC):
-  1. Mark syncStatus = 'uploading'
-  2. Attempt full submission pipeline
-  3. On success: delete row from local DB
-  4. On failure: increment retryCount
-     if retryCount >= 3: mark syncStatus = 'failed', stop retrying
-```
-
----
-
-## 9. Audio Pipeline
-
-```
-Record (record pkg)
-  └── WAV file, 16kHz mono, saved to getTemporaryDirectory()
-      └── Upload to backend (multipart/form-data)
-          └── Backend: PUT to Cloudflare R2
-              └── Backend: POST to Sarvam saarika:v2 (STT)
-                  └── POST to Sarvam saaras:v2 (translate)
-                      └── Return { transcript_original, transcript_english } to app
-```
-
-**Max recording duration:** 120 seconds — enforced by a `Timer` that auto-stops recording at 120s.
-
-**Playback in lists:** `just_audio` with a global `AudioPlayerManager` — only one track plays at a time. Starting a new track pauses the previous one.
-
----
-
-## 10. Localisation
-
-**Package:** `flutter_localizations` + `intl`
-
-**ARB files:**
-```
-lib/l10n/
-  app_en.arb   # English (default)
-  app_gu.arb   # Gujarati
-  app_hi.arb   # Hindi
-```
-
-**Locale switching at runtime:**
-```dart
-// localeProvider (Riverpod)
-// On language pill tap:
-//   1. PATCH /users/me { language_pref: "gu" }
-//   2. ref.read(localeProvider.notifier).setLocale(Locale("gu"))
-//   3. MaterialApp.locale updates → all l10n strings re-render
-```
-
-**Strings to translate (worker-facing only in v1):**
-- Report screen: tab labels, hint banner text, field labels, button labels, submission state messages
-- History screen: title, search hint, filter labels
-- Profile screen: section labels, language card title, sign out label
-- Common: error messages, loading states, empty states
-
----
-
-## 11. Permissions
-
-| Permission | When requested | Package |
+### Platform-Specific — implement per platform via expect/actual
+| Feature | Android | iOS |
 |---|---|---|
-| Microphone | First tap of Mic button | `permission_handler` |
-| Camera | First tap of QR scanner icon | `permission_handler` |
-| Notifications | On first launch (if notifications enabled) | `permission_handler` |
-
-Denied permissions: show a rationale dialog with a "Go to Settings" button (`openAppSettings()`).
-
----
-
-## 12. Key Packages
-
-| Package | Purpose |
-|---|---|
-| `go_router` | Navigation |
-| `flutter_riverpod` | State management |
-| `dio` | HTTP client |
-| `flutter_secure_storage` | JWT token storage |
-| `drift` | Local SQLite (offline queue) |
-| `record` | Audio recording |
-| `just_audio` | Audio playback |
-| `audio_waveforms` | Waveform visualisation |
-| `mobile_scanner` | QR code scanning |
-| `connectivity_plus` | Network state monitoring |
-| `permission_handler` | Runtime permissions |
-| `flutter_localizations` + `intl` | i18n |
-| `firebase_crashlytics` | Crash reporting |
-| `workmanager` | Background sync |
-| `fl_chart` | Dashboard bar chart |
-| `cached_network_image` | Avatar / asset caching |
+| UI framework | Jetpack Compose | SwiftUI |
+| Navigation | Navigation Compose | NavigationStack |
+| Audio recording | `MediaRecorder` (SDK) | `AVAudioRecorder` |
+| Audio playback | `ExoPlayer` (Media3) | `AVAudioPlayer` |
+| Waveform | `Canvas` (Compose) | Custom `Shape` (SwiftUI) |
+| QR scanning | CameraX + ML Kit | `AVFoundation` + `CoreImage` |
+| Secure JWT storage | `EncryptedSharedPreferences` | Keychain |
+| Background sync | `WorkManager` | `BGTaskScheduler` |
+| Push notifications | FCM | APNs |
+| Crash reporting | Firebase Crashlytics (Android SDK) | Firebase Crashlytics (iOS SDK) |
+| Charts | Vico (`compose-m3`) | SwiftUI Charts (iOS 16+) |
+| Localisation | `strings.xml` | `Localizable.strings` |
 
 ---
 
-## 13. Build & Environment
+## 3. Libraries
+
+### shared/build.gradle.kts
+
+```kotlin
+plugins {
+    alias(libs.plugins.kotlinMultiplatform)
+    alias(libs.plugins.kotlinSerialization)
+    alias(libs.plugins.sqlDelight)
+    id("co.touchlab.skie") version "0.8.x"          // Swift coroutine bridging
+}
+
+kotlin {
+    androidTarget()
+    iosX64(); iosArm64(); iosSimulatorArm64()
+
+    sourceSets {
+        commonMain.dependencies {
+            // Networking
+            implementation("io.ktor:ktor-client-core:2.3.x")
+            implementation("io.ktor:ktor-client-auth:2.3.x")
+            implementation("io.ktor:ktor-client-content-negotiation:2.3.x")
+            implementation("io.ktor:ktor-serialization-kotlinx-json:2.3.x")
+            implementation("io.ktor:ktor-client-logging:2.3.x")
+
+            // Coroutines + serialization + datetime
+            implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.x")
+            implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.x")
+            implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.5.x")
+
+            // DB
+            implementation("app.cash.sqldelight:coroutines-extensions:2.x")
+
+            // DI
+            implementation("io.insert-koin:koin-core:3.5.x")
+
+            // ViewModel (KMP-compatible)
+            implementation("androidx.lifecycle:lifecycle-viewmodel:2.8.x")
+
+            // Preferences
+            implementation("com.russhwolf:multiplatform-settings:1.1.x")
+            implementation("com.russhwolf:multiplatform-settings-coroutines:1.1.x")
+
+            // SKIE annotations (Swift coroutine bridge)
+            implementation("co.touchlab.skie:configuration-annotations:0.8.x")
+        }
+
+        androidMain.dependencies {
+            implementation("io.ktor:ktor-client-okhttp:2.3.x")
+            implementation("app.cash.sqldelight:android-driver:2.x")
+            implementation("io.insert-koin:koin-android:3.5.x")
+            implementation("io.insert-koin:koin-androidx-compose:3.5.x")
+            implementation("androidx.work:work-runtime-ktx:2.9.x")
+        }
+
+        iosMain.dependencies {
+            implementation("io.ktor:ktor-client-darwin:2.3.x")
+            implementation("app.cash.sqldelight:native-driver:2.x")
+        }
+    }
+}
+```
+
+### androidApp/build.gradle.kts
+
+```kotlin
+dependencies {
+    implementation(project(":shared"))
+
+    // Compose BOM
+    implementation(platform("androidx.compose:compose-bom:2024.x"))
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+
+    // Navigation
+    implementation("androidx.navigation:navigation-compose:2.7.x")
+
+    // Lifecycle
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.x")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.x")
+
+    // DI
+    implementation("io.insert-koin:koin-androidx-compose:3.5.x")
+
+    // Audio playback
+    implementation("androidx.media3:media3-exoplayer:1.3.x")
+    implementation("androidx.media3:media3-ui:1.3.x")
+
+    // Charts
+    implementation("com.patrykandpatrick.vico:compose-m3:1.x")
+
+    // QR scanning
+    implementation("androidx.camera:camera-camera2:1.3.x")
+    implementation("androidx.camera:camera-lifecycle:1.3.x")
+    implementation("androidx.camera:camera-view:1.3.x")
+    implementation("com.google.mlkit:barcode-scanning:17.x")
+
+    // Crash reporting
+    implementation("com.google.firebase:firebase-crashlytics-ktx")
+    implementation("com.google.firebase:firebase-analytics-ktx")
+}
+```
+
+### iosApp — Swift Package Manager (SPM)
+
+```swift
+// Package.swift dependencies (or via Xcode SPM UI)
+.package(url: "https://github.com/firebase/firebase-ios-sdk", from: "10.x.x")
+
+// Frameworks used (all built-in, no SPM needed):
+// AVFoundation    — audio recording + playback + QR scanning
+// Security        — Keychain access
+// BackgroundTasks — BGTaskScheduler
+// Charts          — SwiftUI Charts (iOS 16+)
+```
+
+---
+
+## 4. expect/actual Declarations
+
+### AudioRecorder
+
+```kotlin
+// commonMain/platform/AudioRecorder.kt
+expect class AudioRecorder() {
+    fun start(outputPath: String)
+    fun stop(): String          // returns final file path
+    val isRecording: StateFlow<Boolean>
+}
+```
+
+```kotlin
+// androidMain
+actual class AudioRecorder actual constructor() {
+    private var recorder: MediaRecorder? = null
+    private val _isRecording = MutableStateFlow(false)
+    actual val isRecording: StateFlow<Boolean> = _isRecording
+
+    actual fun start(outputPath: String) {
+        recorder = MediaRecorder().apply {
+            setAudioSource(MediaRecorder.AudioSource.MIC)
+            setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
+            setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
+            setAudioSamplingRate(16000)
+            setAudioChannels(1)
+            setOutputFile(outputPath)
+            prepare(); start()
+        }
+        _isRecording.value = true
+    }
+
+    actual fun stop(): String {
+        recorder?.stop(); recorder?.release(); recorder = null
+        _isRecording.value = false
+        return outputPath
+    }
+}
+```
+
+```kotlin
+// iosMain — delegates to AVAudioRecorder via Objective-C interop
+actual class AudioRecorder actual constructor() {
+    private var recorder: AVAudioRecorder? = null
+    private val _isRecording = MutableStateFlow(false)
+    actual val isRecording: StateFlow<Boolean> = _isRecording
+
+    actual fun start(outputPath: String) {
+        val url = NSURL.fileURLWithPath(outputPath)
+        val settings = mapOf(
+            AVFormatIDKey to kAudioFormatMPEG4AAC,
+            AVSampleRateKey to 16000,
+            AVNumberOfChannelsKey to 1
+        )
+        recorder = AVAudioRecorder(url, settings, null)
+        recorder?.record()
+        _isRecording.value = true
+    }
+
+    actual fun stop(): String {
+        recorder?.stop(); recorder = null
+        _isRecording.value = false
+        return outputPath
+    }
+}
+```
+
+### SecureStorage
+
+```kotlin
+// commonMain/platform/SecureStorage.kt
+expect class SecureStorage() {
+    fun putString(key: String, value: String)
+    fun getString(key: String): String?
+    fun clear()
+}
+```
+
+```kotlin
+// androidMain — EncryptedSharedPreferences
+actual class SecureStorage actual constructor() {
+    private val prefs = EncryptedSharedPreferences.create(
+        "diamond_secure", MasterKey.Builder(context).build(),
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    )
+    actual fun putString(key: String, value: String) = prefs.edit().putString(key, value).apply()
+    actual fun getString(key: String) = prefs.getString(key, null)
+    actual fun clear() = prefs.edit().clear().apply()
+}
+```
+
+```kotlin
+// iosMain — Keychain
+actual class SecureStorage actual constructor() {
+    actual fun putString(key: String, value: String) { /* SecItemAdd/SecItemUpdate */ }
+    actual fun getString(key: String): String? { /* SecItemCopyMatching */ }
+    actual fun clear() { /* SecItemDelete for all app keys */ }
+}
+```
+
+### FileSystem
+
+```kotlin
+// commonMain/platform/FileSystem.kt
+expect fun getTempDir(): String
+
+// androidMain
+actual fun getTempDir(): String = context.cacheDir.absolutePath
+
+// iosMain
+actual fun getTempDir(): String = NSTemporaryDirectory()
+```
+
+### BackgroundSync
+
+```kotlin
+// commonMain/platform/BackgroundSync.kt
+expect fun scheduleSync()
+
+// androidMain
+actual fun scheduleSync() {
+    val request = OneTimeWorkRequestBuilder<SyncWorker>()
+        .setConstraints(Constraints(NetworkType.CONNECTED))
+        .build()
+    WorkManager.getInstance(context).enqueueUniqueWork(
+        "pending_sync", ExistingWorkPolicy.KEEP, request)
+}
+
+// iosMain
+actual fun scheduleSync() {
+    val request = BGProcessingTaskRequest("com.anjali.sync")
+    request.requiresNetworkConnectivity = true
+    BGTaskScheduler.shared.submit(request, null)
+}
+```
+
+---
+
+## 5. State Management (ViewModel + StateFlow)
+
+ViewModels live in `shared/commonMain/presentation/`. Both platforms consume them identically in terms of logic — only the observation syntax differs.
+
+```kotlin
+// shared — ReportViewModel.kt
+data class ReportUiState(
+    val reportType: ReportType = ReportType.RECEIVE,
+    val diamondId: String = "",
+    val recordingState: RecordingState = RecordingState.IDLE,
+    val submissionState: SubmissionState = SubmissionState.IDLE,
+    val transcriptOriginal: String = "",
+    val transcriptEnglish: String = "",
+    val severity: String? = null,
+    val chainAttribution: String? = null,
+    val error: String? = null,
+)
+
+class ReportViewModel(
+    private val submitReportUseCase: SubmitReportUseCase,
+    private val audioRecorder: AudioRecorder,
+) : ViewModel() {
+    private val _uiState = MutableStateFlow(ReportUiState())
+    val uiState: StateFlow<ReportUiState> = _uiState.asStateFlow()
+
+    fun setReportType(type: ReportType) { _uiState.update { it.copy(reportType = type) } }
+    fun setDiamondId(id: String)        { _uiState.update { it.copy(diamondId = id) } }
+
+    fun toggleRecording() {
+        if (audioRecorder.isRecording.value) stopRecording() else startRecording()
+    }
+
+    private fun startRecording() {
+        val path = "${getTempDir()}/rec_${Clock.System.now().epochSeconds}.m4a"
+        audioRecorder.start(path)
+        _uiState.update { it.copy(recordingState = RecordingState.RECORDING) }
+    }
+
+    private fun stopRecording() {
+        audioRecorder.stop()
+        _uiState.update { it.copy(recordingState = RecordingState.RECORDED) }
+    }
+
+    fun submit() = viewModelScope.launch {
+        submitReportUseCase(
+            diamondId   = _uiState.value.diamondId,
+            reportType  = _uiState.value.reportType,
+            audioPath   = audioRecorder.lastFilePath,
+            onProgress  = { state -> _uiState.update { it.copy(submissionState = state) } },
+        ).onSuccess { result ->
+            _uiState.update { it.copy(
+                submissionState    = SubmissionState.SUCCESS,
+                transcriptOriginal = result.transcriptOriginal,
+                transcriptEnglish  = result.transcriptEnglish,
+                severity           = result.severity,
+                chainAttribution   = result.chainAttribution,
+            )}
+        }.onFailure { err ->
+            _uiState.update { it.copy(submissionState = SubmissionState.ERROR, error = err.message) }
+        }
+    }
+}
+```
+
+**Android — observe in Compose:**
+```kotlin
+@Composable
+fun ReportScreen(vm: ReportViewModel = koinViewModel()) {
+    val state by vm.uiState.collectAsStateWithLifecycle()
+    // use state.recordingState, state.submissionState, etc.
+}
+```
+
+**iOS — observe in SwiftUI via SKIE:**
+```swift
+struct ReportView: View {
+    @StateObject var vm = ReportViewModel(...)
+
+    var body: some View {
+        // SKIE converts StateFlow<ReportUiState> → Swift AsyncStream automatically
+        // Access vm.uiState as a published property
+    }
+}
+```
+
+---
+
+## 6. Networking — Ktor Client
+
+```kotlin
+// shared/data/network/ApiClient.kt
+fun createHttpClient(engine: HttpClientEngine): HttpClient = HttpClient(engine) {
+    install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
+    install(Logging) { level = LogLevel.BODY }
+    install(Auth) {
+        bearer {
+            loadTokens {
+                val access  = secureStorage.getString("access_token")
+                val refresh = secureStorage.getString("refresh_token")
+                if (access != null && refresh != null) BearerTokens(access, refresh) else null
+            }
+            refreshTokens {
+                val response = client.post("/auth/refresh") {
+                    markAsRefreshTokenRequest()
+                    setBody(RefreshRequest(secureStorage.getString("refresh_token") ?: ""))
+                }
+                val tokens = response.body<TokenResponse>()
+                secureStorage.putString("access_token",  tokens.accessToken)
+                secureStorage.putString("refresh_token", tokens.refreshToken)
+                BearerTokens(tokens.accessToken, tokens.refreshToken)
+            }
+        }
+    }
+    defaultRequest { url("https://api.anjalidiamonds.com") }
+}
+```
+
+**API response wrapper:**
+```kotlin
+@Serializable
+data class ApiResponse<T>(
+    val data: T? = null,
+    val error: String? = null,
+)
+
+// Error handling mapped to UI
+suspend fun <T> safeApiCall(block: suspend () -> T): Result<T> =
+    runCatching { block() }
+        .recoverCatching { e ->
+            when (e) {
+                is ClientRequestException  -> throw AppError.fromHttp(e.response.status.value)
+                is IOException             -> throw AppError.NoNetwork
+                else                       -> throw e
+            }
+        }
+```
+
+---
+
+## 7. Local Database — SQLDelight
+
+### Schema files
+
+```sql
+-- shared/src/commonMain/sqldelight/com/anjali/PendingReport.sq
+CREATE TABLE PendingReport (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  worker_id   TEXT    NOT NULL,
+  report_type TEXT    NOT NULL,
+  diamond_id  TEXT    NOT NULL,
+  audio_path  TEXT    NOT NULL,
+  created_at  INTEGER NOT NULL,
+  sync_status TEXT    NOT NULL DEFAULT 'pending',
+  retry_count INTEGER NOT NULL DEFAULT 0
+);
+
+selectAll:
+SELECT * FROM PendingReport ORDER BY created_at ASC;
+
+insertPending:
+INSERT INTO PendingReport(worker_id, report_type, diamond_id, audio_path, created_at)
+VALUES (?, ?, ?, ?, ?);
+
+updateStatus:
+UPDATE PendingReport SET sync_status = ?, retry_count = ? WHERE id = ?;
+
+deleteById:
+DELETE FROM PendingReport WHERE id = ?;
+
+countByStatus:
+SELECT COUNT(*) FROM PendingReport WHERE sync_status = ?;
+```
+
+### Database factory (expect/actual)
+
+```kotlin
+// commonMain
+expect fun createDatabase(): DiamondDatabase
+
+// androidMain
+actual fun createDatabase(): DiamondDatabase =
+    DiamondDatabase(AndroidSqliteDriver(DiamondDatabase.Schema, context, "diamond.db"))
+
+// iosMain
+actual fun createDatabase(): DiamondDatabase =
+    DiamondDatabase(NativeSqliteDriver(DiamondDatabase.Schema, "diamond.db"))
+```
+
+---
+
+## 8. Dependency Injection — Koin
+
+```kotlin
+// shared/di/SharedModule.kt
+val sharedModule = module {
+    single { createHttpClient(get()) }
+    single { createDatabase() }
+    single { SecureStorage() }
+    single { AudioRecorder() }
+
+    // Repositories
+    single { ReportRepository(get(), get()) }
+    single { UserRepository(get()) }
+    single { ChatRepository(get()) }
+
+    // Use cases
+    factory { SubmitReportUseCase(get(), get()) }
+    factory { GetDashboardUseCase(get()) }
+    factory { SyncPendingUseCase(get(), get()) }
+
+    // ViewModels
+    viewModel { ReportViewModel(get(), get()) }
+    viewModel { HistoryViewModel(get()) }
+    viewModel { DashboardViewModel(get()) }
+    viewModel { UsersViewModel(get()) }
+    viewModel { ChatViewModel(get()) }
+    viewModel { (userId: Int) -> UserDetailViewModel(get(), userId) }
+}
+
+// Shared entry point called by both platforms
+fun initKoin() = startKoin { modules(sharedModule) }
+```
+
+```kotlin
+// androidMain — DiamondApplication.kt
+class DiamondApplication : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        initKoin()
+    }
+}
+```
+
+```swift
+// iosApp — DiamondApp.swift
+@main struct DiamondApp: App {
+    init() { SharedModuleKt.doInitKoin() }
+    var body: some Scene { WindowGroup { ContentView() } }
+}
+```
+
+---
+
+## 9. Navigation
+
+### Android — Navigation Compose
+
+```kotlin
+// androidApp/navigation/AppNavHost.kt
+sealed class Route(val path: String) {
+    object Login              : Route("login")
+    object WorkerReport       : Route("worker/report")
+    object WorkerHistory      : Route("worker/history")
+    object WorkerProfile      : Route("worker/profile")
+    object Dashboard          : Route("dashboard")
+    object ReportDetails      : Route("dashboard/{processId}?period={period}")
+    object Chatbot            : Route("chatbot")
+    object ManagementProfile  : Route("management/profile")
+    object Users              : Route("admin/users")
+    object CreateUser         : Route("admin/users/create")
+    object UserDetail         : Route("admin/users/{userId}")
+    object Settings           : Route("admin/settings")
+    object AdminProfile       : Route("admin/profile")
+}
+
+@Composable
+fun AppNavHost(navController: NavHostController, role: String) {
+    NavHost(navController, startDestination = startRouteForRole(role)) {
+        composable(Route.Login.path)          { LoginScreen(navController) }
+        composable(Route.WorkerReport.path)   { ReportScreen(navController) }
+        // ... etc
+        composable(Route.ReportDetails.path,
+            arguments = listOf(navArgument("processId") { type = NavType.IntType })
+        ) { backStackEntry ->
+            ReportDetailsScreen(
+                processId = backStackEntry.arguments!!.getInt("processId"),
+                navController = navController,
+            )
+        }
+    }
+}
+```
+
+**Bottom nav scaffold:**
+```kotlin
+@Composable
+fun AppScaffold(role: UserRole, content: @Composable () -> Unit) {
+    Scaffold(
+        bottomBar = {
+            NavigationBar(containerColor = Color.White) {
+                bottomNavItemsForRole(role).forEach { item ->
+                    NavigationBarItem(
+                        selected = currentRoute == item.route,
+                        onClick  = { navController.navigate(item.route) },
+                        icon     = { Icon(item.icon, contentDescription = item.label) },
+                        colors   = NavigationBarItemDefaults.colors(
+                            selectedIconColor   = AppColors.Primary,
+                            unselectedIconColor = AppColors.TextSecondary,
+                            indicatorColor      = Color.Transparent,
+                        )
+                    )
+                }
+            }
+        }
+    ) { content() }
+}
+```
+
+### iOS — SwiftUI NavigationStack
+
+```swift
+// iosApp/Navigation/AppRouter.swift
+enum Route: Hashable {
+    case workerReport, workerHistory, workerProfile
+    case dashboard, reportDetails(processId: Int, period: String)
+    case chatbot
+    case users, createUser, userDetail(userId: Int)
+    case profile
+}
+
+struct RootView: View {
+    @State private var path = NavigationPath()
+    let role: UserRole
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            homeViewForRole(role)
+                .navigationDestination(for: Route.self) { route in
+                    switch route {
+                    case .workerHistory:          HistoryView()
+                    case .dashboard:              DashboardView()
+                    case .reportDetails(let id, let period):
+                                                  ReportDetailsView(processId: id, period: period)
+                    case .userDetail(let id):     UserDetailView(userId: id)
+                    default:                      EmptyView()
+                    }
+                }
+        }
+    }
+}
+```
+
+---
+
+## 10. Design Tokens — Android (Compose)
+
+```kotlin
+// androidApp/theme/AppColors.kt
+object AppColors {
+    val Primary        = Color(0xFFE8491B)
+    val PrimaryDark    = Color(0xFF0F1A2E)
+    val LoginBg        = Color(0xFF3B0A0A)
+    val Background     = Color(0xFFF5F5F5)
+    val Surface        = Color(0xFFFFFFFF)
+    val InputFill      = Color(0xFFF0F0F0)
+    val Severe         = Color(0xFFE8491B)
+    val Moderate       = Color(0xFFFFC107)
+    val Low            = Color(0xFF4CAF50)
+    val ActiveGreen    = Color(0xFF4CAF50)
+    val InactiveRed    = Color(0xFFE53935)
+    val TextPrimary    = Color(0xFF1A1A1A)
+    val TextSecondary  = Color(0xFF6B7280)
+    val TextHint       = Color(0xFF9CA3AF)
+    val ReceiveTagBg   = Color(0xFFEBF5FF)
+    val ReceiveTagFg   = Color(0xFF1D72E8)
+    val ProblemTagBg   = Color(0xFFFFF0EB)
+    val ProblemTagFg   = Color(0xFFE8491B)
+}
+
+// androidApp/theme/AppTheme.kt
+val AppShapes = Shapes(
+    small  = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(12.dp),
+    large  = RoundedCornerShape(16.dp),
+)
+// Pill-shaped buttons: shape = CircleShape (50% radius)
+
+// androidApp/theme/AppTypography.kt
+val AppTypography = Typography(
+    titleLarge   = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Bold),
+    bodyLarge    = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Normal),
+    bodyMedium   = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Normal),
+    labelSmall   = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                             letterSpacing = 0.8.sp),
+)
+```
+
+---
+
+## 11. Screen Specs — Android (Compose)
+
+### 11.1 Login Screen
+
+```kotlin
+@Composable
+fun LoginScreen(navController: NavController, vm: AuthViewModel = koinViewModel()) {
+    val state by vm.uiState.collectAsStateWithLifecycle()
+
+    Box(Modifier.fillMaxSize().background(AppColors.LoginBg)) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("Anjali Diamonds", color = Color.White, style = AppTypography.titleLarge)
+            Text("Sign in to your account", color = AppColors.TextSecondary)
+
+            Card(shape = RoundedCornerShape(20.dp)) {
+                Column(Modifier.padding(24.dp)) {
+                    LabeledTextField("USERNAME", vm.username, { vm.username = it })
+                    LabeledTextField("PASSWORD", vm.password, { vm.password = it },
+                        visualTransformation = PasswordVisualTransformation())
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(state.stayLoggedIn, { vm.toggleStayLoggedIn() })
+                        Text("Stay logged in")
+                    }
+                    Button(
+                        onClick = { vm.login() },
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        shape = CircleShape,
+                        colors = ButtonDefaults.buttonColors(containerColor = AppColors.PrimaryDark),
+                    ) {
+                        if (state.isLoading) CircularProgressIndicator(color = Color.White, size = 20.dp)
+                        else Text("Sign In", style = AppTypography.bodyLarge)
+                    }
+                    if (state.error != null)
+                        Text(state.error!!, color = AppColors.InactiveRed, fontSize = 13.sp)
+                }
+            }
+        }
+    }
+}
+```
+
+### 11.2 Worker Report Screen
+
+**State enums (shared):**
+```kotlin
+enum class ReportType    { RECEIVE, PROBLEM }
+enum class RecordingState{ IDLE, RECORDING, RECORDED }
+enum class SubmissionState { IDLE, UPLOADING, TRANSCRIBING, TRANSLATING, ANALYSING, SUCCESS, ERROR, QUEUED }
+```
+
+**Composable structure:**
+```kotlin
+@Composable
+fun ReportScreen(vm: ReportViewModel = koinViewModel()) {
+    val state by vm.uiState.collectAsStateWithLifecycle()
+
+    Column(Modifier.fillMaxSize().background(AppColors.Background)) {
+        ReportTypeTabBar(state.reportType, vm::setReportType)
+        if (!state.hintDismissed)
+            HintBanner(hintTextFor(state.reportType)) { vm.dismissHint() }
+        DiamondIdField(state.diamondId, vm::setDiamondId)
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                MicButton(state.recordingState) { vm.toggleRecording() }
+                if (state.recordingState != RecordingState.IDLE)
+                    WaveformDisplay(...)
+                if (state.transcriptOriginal.isNotEmpty())
+                    TranscriptBox(state.transcriptOriginal)
+            }
+        }
+        SubmitButton(state) { vm.submit() }
+    }
+}
+```
+
+**MicButton — pulse animation while recording:**
+```kotlin
+@Composable
+fun MicButton(state: RecordingState, onClick: () -> Unit) {
+    val infiniteTransition = rememberInfiniteTransition()
+    val pulseAlpha by infiniteTransition.animateFloat(
+        0f, 0.4f, infiniteRepeatable(tween(800), RepeatMode.Reverse)
+    )
+    Box(contentAlignment = Alignment.Center) {
+        if (state == RecordingState.RECORDING)
+            Box(Modifier.size(100.dp).background(
+                AppColors.Primary.copy(alpha = pulseAlpha), CircleShape))
+        Box(
+            Modifier.size(80.dp).background(AppColors.Primary, CircleShape).clickable(onClick = onClick),
+            contentAlignment = Alignment.Center,
+        ) { Icon(Icons.Default.Mic, tint = Color.White, modifier = Modifier.size(36.dp)) }
+    }
+}
+```
+
+**SubmitButton — inline progress text:**
+```kotlin
+@Composable
+fun SubmitButton(state: ReportUiState, onSubmit: () -> Unit) {
+    val label = when (state.submissionState) {
+        SubmissionState.UPLOADING     -> "Uploading…"
+        SubmissionState.TRANSCRIBING  -> "Transcribing…"
+        SubmissionState.TRANSLATING   -> "Translating…"
+        SubmissionState.ANALYSING     -> "Analysing…"
+        else                          -> "Submit"
+    }
+    val enabled = state.diamondId.isNotBlank()
+               && state.recordingState == RecordingState.RECORDED
+               && state.submissionState == SubmissionState.IDLE
+    Button(
+        onClick = onSubmit, enabled = enabled,
+        modifier = Modifier.fillMaxWidth().padding(16.dp).height(52.dp),
+        shape = CircleShape,
+        colors = ButtonDefaults.buttonColors(containerColor = AppColors.Primary),
+    ) { Text(label, color = Color.White) }
+}
+```
+
+### 11.3 Dashboard Screen
+
+**Bar chart using Vico:**
+```kotlin
+@Composable
+fun DefectRateChart(data: List<ProcessDefectCount>, onProcessTap: (Int) -> Unit) {
+    // Vico ColumnChart with horizontal scroll disabled
+    // Each entry = one process, orange bars
+    // Tap on entry → onProcessTap(processId)
+    val model = CartesianChartModelProducer.build {
+        columnSeries { series(data.map { it.count.toFloat() }) }
+    }
+    CartesianChartHost(
+        chart = rememberCartesianChart(
+            rememberColumnCartesianLayer(
+                ColumnCartesianLayer.ColumnProvider.series(
+                    rememberLineComponent(color = AppColors.Primary, thickness = 12.dp)
+                )
+            ),
+            startAxis = rememberStartAxis(/* process names */),
+        ),
+        modelProducer = model,
+    )
+}
+```
+
+**Auto-refresh:**
+```kotlin
+// In DashboardViewModel
+init {
+    viewModelScope.launch {
+        while (true) {
+            loadDashboard()
+            delay(10_000)
+        }
+    }
+}
+```
+
+### 11.4 Shared Composables
+
+**SeverityBadge:**
+```kotlin
+@Composable
+fun SeverityBadge(severity: String) {
+    val (bg, fg) = when (severity) {
+        "Severe"   -> AppColors.Severe.copy(0.12f)   to AppColors.Severe
+        "Moderate" -> AppColors.Moderate.copy(0.15f) to AppColors.Moderate
+        else       -> AppColors.Low.copy(0.12f)      to AppColors.Low
+    }
+    Row(
+        Modifier.background(bg, CircleShape).border(0.5.dp, fg, CircleShape).padding(horizontal=8.dp, vertical=3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(Modifier.size(6.dp).background(fg, CircleShape))
+        Spacer(Modifier.width(4.dp))
+        Text(severity, color = fg, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+```
+
+**ReportTypeTag:**
+```kotlin
+@Composable
+fun ReportTypeTag(type: String) {
+    val isReceive = type == "receive"
+    Box(
+        Modifier.background(
+            if (isReceive) AppColors.ReceiveTagBg else AppColors.ProblemTagBg,
+            RoundedCornerShape(6.dp)
+        ).padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Text(
+            text = if (isReceive) "RECEIVE" else "PROBLEM",
+            color = if (isReceive) AppColors.ReceiveTagFg else AppColors.ProblemTagFg,
+            fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+```
+
+**AudioPlayerRow:**
+```kotlin
+// Uses ExoPlayer via AndroidView (or Media3 Compose when stable)
+@Composable
+fun AudioPlayerRow(url: String, durationSeconds: Int) {
+    val context = LocalContext.current
+    val player = remember { ExoPlayer.Builder(context).build() }
+    var isPlaying by remember { mutableStateOf(false) }
+
+    DisposableEffect(url) {
+        player.setMediaItem(MediaItem.fromUri(url))
+        player.prepare()
+        onDispose { player.release() }
+    }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        IconButton(onClick = { if (isPlaying) player.pause() else player.play(); isPlaying = !isPlaying }) {
+            Icon(
+                if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                tint = Color.White,
+                modifier = Modifier.background(AppColors.Primary, CircleShape).size(40.dp).padding(8.dp),
+            )
+        }
+        WaveformBar(Modifier.weight(1f))                    // static amplitude bars
+        Text(formatDuration(durationSeconds), style = AppTypography.bodyMedium)
+    }
+}
+```
+
+---
+
+## 12. Screen Specs — iOS (SwiftUI)
+
+SwiftUI screens mirror the Compose screens structurally. Key patterns:
+
+```swift
+// Observe shared ViewModel via SKIE
+struct ReportView: View {
+    @StateObject private var vm: ReportViewModel = KoinHelper.shared.reportViewModel()
+    // SKIE converts uiState: StateFlow<ReportUiState> into a @Published-like observable
+
+    var body: some View {
+        VStack {
+            ReportTypeTabBar(selected: vm.uiState.reportType) { vm.setReportType($0) }
+            // ...
+            MicButton(state: vm.uiState.recordingState) { vm.toggleRecording() }
+        }
+    }
+}
+
+// Colors defined in Assets.xcassets (match Compose values exactly)
+extension Color {
+    static let primary      = Color("Primary")       // #E8491B
+    static let primaryDark  = Color("PrimaryDark")   // #0F1A2E
+    static let loginBg      = Color("LoginBg")       // #3B0A0A
+}
+
+// Charts — SwiftUI Charts (iOS 16+)
+Chart(defectData) { item in
+    BarMark(x: .value("Count", item.count), y: .value("Process", item.processName))
+        .foregroundStyle(Color.primary)
+        .cornerRadius(6)
+}
+.onTapGesture { /* navigate to ReportDetailsView */ }
+```
+
+---
+
+## 13. Audio Pipeline
 
 ```
-.env.development   → API base URL: http://192.168.x.x:8000
-.env.production    → API base URL: https://api.anjalidiamonds.com
+AudioRecorder.start() [expect/actual]          → local file: getTempDir()/rec_<ts>.m4a
+AudioRecorder.stop()  [expect/actual]          → returns filePath
+    ↓
+Ktor multipart PUT /audio/upload               → { fileUuid }
+    ↓
+Ktor POST /sarvam/stt { fileUuid }             → { transcriptOriginal }  [Sarvam saarika:v2]
+    ↓
+Ktor POST /gemini/translate { text }           → { transcriptEnglish }   [Gemini]
+    ↓
+Ktor POST /reports { diamondId, type, ... }    → { reportId, severity, defectType, chainAttribution }
+    ↓
+StateFlow update → UI re-renders (Compose / SwiftUI)
+
+On network failure:
+    → SQLDelight INSERT PendingReport
+    → scheduleSync() [expect/actual — WorkManager / BGTaskScheduler]
 ```
-
-**Flavors:** `development` and `production` (Flutter `--dart-define` or `flutter_flavorizr`)
-
-**Min Android SDK:** API 26 (Android 8.0)  
-**Target Android SDK:** API 35  
-**iOS Deployment Target:** 15.0
 
 ---
 
-## 14. Testing Strategy
+## 14. Offline Sync Flow
 
-| Layer | Approach |
-|---|---|
-| Unit | Riverpod notifier logic, API response parsing, emp code generation, fault rate calculation |
-| Widget | Key widgets: `ReportTypeTabBar`, `MicButton` state transitions, `SeverityBadge`, `ReportCard` |
-| Integration | Submission flow E2E (mock Sarvam + Gemini), offline queue sync cycle |
-| Golden tests | Login screen, Dashboard KPI row, ReportCard — snapshot test for design regression |
+```kotlin
+// shared/domain/usecase/SyncPendingUseCase.kt
+class SyncPendingUseCase(
+    private val localDb: DiamondDatabase,
+    private val api: ApiClient,
+) {
+    suspend operator fun invoke() {
+        localDb.pendingReportQueries.selectAll().executeAsList().forEach { pending ->
+            runCatching {
+                // full submission pipeline (upload → STT → translate → submit)
+                submitReport(pending)
+                localDb.pendingReportQueries.deleteById(pending.id)
+            }.onFailure {
+                val newCount = pending.retry_count + 1
+                val newStatus = if (newCount >= 3) "failed" else "pending"
+                localDb.pendingReportQueries.updateStatus(newStatus, newCount, pending.id)
+            }
+        }
+    }
+}
+```
+
+---
+
+## 15. Localisation
+
+| Platform | File | Location |
+|---|---|---|
+| Android | `strings.xml` | `androidApp/src/main/res/values/strings.xml` (EN) `values-gu/strings.xml` (GU) `values-hi/strings.xml` (HI) |
+| iOS | `Localizable.strings` | `iosApp/iosApp/en.lproj/Localizable.strings` `gu.lproj/Localizable.strings` `hi.lproj/Localizable.strings` |
+
+**Language switching at runtime:**
+
+```kotlin
+// Android — restart Activity with new locale config
+fun applyLocale(context: Context, languageCode: String) {
+    val locale = Locale(languageCode)
+    val config = context.resources.configuration
+    config.setLocale(locale)
+    context.createConfigurationContext(config)
+    (context as Activity).recreate()
+}
+```
+
+```swift
+// iOS — update environment locale
+@AppStorage("language") var language = "en"
+ContentView().environment(\.locale, Locale(identifier: language))
+```
+
+---
+
+## 16. Permissions
+
+| Permission | Android | iOS |
+|---|---|---|
+| Microphone | `RECORD_AUDIO` in manifest + runtime | `NSMicrophoneUsageDescription` in Info.plist |
+| Camera (QR) | `CAMERA` in manifest + runtime | `NSCameraUsageDescription` in Info.plist |
+| Notifications | `POST_NOTIFICATIONS` (API 33+) + runtime | `UNUserNotificationCenter.requestAuthorization` |
+
+---
+
+## 17. Project Setup — Step by Step
+
+1. **Create KMP project** at [kmp.jetbrains.com](https://kmp.jetbrains.com)
+   - Targets: Android + iOS
+   - Android UI: Jetpack Compose ✓
+   - iOS UI: SwiftUI ✓
+   - Uncheck "Share UI" (no Compose Multiplatform)
+
+2. **Add SKIE Gradle plugin** to `shared/build.gradle.kts` — enables clean Swift async/await for StateFlow
+
+3. **Configure SQLDelight plugin** — add `sqldelight { databases { create("DiamondDatabase") { ... } } }` block, write `.sq` files, sync to generate type-safe Kotlin DAOs
+
+4. **Set up Koin** — write `SharedModule.kt`, call `initKoin()` from `DiamondApplication.kt` (Android) and `DiamondApp.swift` (iOS)
+
+5. **Implement expect/actual** — `AudioRecorder`, `SecureStorage`, `FileSystem`, `BackgroundSync` for both `androidMain` and `iosMain`
+
+6. **Build shared layer** in order:
+   - DTOs + serialization models
+   - Ktor `ApiClient` with JWT interceptor
+   - SQLDelight DAOs
+   - Repository implementations
+   - Use cases
+   - ViewModels + UiState data classes
+
+7. **Build Android UI** screen by screen using Jetpack Compose, consuming shared ViewModels via `koinViewModel()`
+
+8. **Build iOS UI** screen by screen using SwiftUI, consuming shared ViewModels via SKIE-generated Swift async streams
+
+9. **Wire navigation** separately: `AppNavHost.kt` (Android), `AppRouter.swift` (iOS)
+
+10. **Add `strings.xml` + `Localizable.strings`** for EN/GU/HI on both platforms
+
+---
+
+## 18. Testing Strategy
+
+| Layer | Tool | What |
+|---|---|---|
+| Shared unit | `kotlin.test` | ViewModel logic, use cases, API response parsing, emp code generation, fault rate |
+| Shared DB | SQLDelight in-memory driver | Offline queue insert/update/delete cycles |
+| Android UI | Compose Test (`composeTestRule`) | ReportScreen tab toggle, MicButton states, SeverityBadge rendering |
+| Android integration | `MockEngine` (Ktor) | Full submission flow (mock Sarvam + Gemini) |
+| iOS unit | XCTest | ViewModel state via SKIE async, SecureStorage Keychain |
+| Android snapshot | Paparazzi | LoginScreen, Dashboard KPI row, ReportCard |

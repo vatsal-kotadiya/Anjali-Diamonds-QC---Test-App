@@ -102,9 +102,9 @@ The app replaces manual paper-based defect logging and provides management with 
 - **DB:** PostgreSQL
 - **Audio storage:** Cloudflare R2 (object storage; no egress fees)
 - **Auth:** JWT (access + refresh tokens)
-- **Speech-to-text:** Sarvam AI `saarika:v2` (Gujarati transcript)
-- **Translation:** Sarvam AI `saaras:v2` (English transcript)
-- **AI analysis:** Google Gemini `gemini-2.0-flash`
+- **Speech-to-text:** Sarvam AI `saarika:v2` (Gujarati audio → Gujarati transcript)
+- **Translation:** Google Gemini `gemini-2.0-flash` (Gujarati transcript → English transcript)
+- **AI analysis + chat:** Google Gemini `gemini-2.0-flash`
 
 ### Architecture
 ```
@@ -112,8 +112,8 @@ Mobile App (Flutter)
     │
     ├── REST API  ──► FastAPI backend  ──► PostgreSQL
     │                       │
-    │                       ├──► Sarvam AI (STT + translate)
-    │                       ├──► Gemini (analysis + chat)
+    │                       ├──► Sarvam AI (STT — Gujarati transcript)
+    │                       ├──► Gemini (translation + analysis + chat)
     │                       └──► Cloudflare R2 (audio files)
     │
     └── Local SQLite (offline queue)
@@ -473,7 +473,7 @@ FCM server-push deferred to v2.
 | 3 | Local server vs cloud for v1 deployment? | Anjali | Before sprint 2 |
 | 4 | Personal phones vs shared tablets? (affects auth UX) | Factory ops | Before sprint 1 |
 | 5 | iOS support in v1 or Android-only? | Anjali | Before sprint 1 |
-| 6 | Sarvam AI rate limits under concurrent floor submissions? | Tech lead | Sprint 2 |
+| 6 | Sarvam STT rate limits under concurrent floor submissions? | Tech lead | Sprint 2 |
 | 7 | Diamond ID: dropdown (known IDs) vs free-text vs QR scan? Design shows dropdown + QR icon. | Anjali + Tech lead | Before sprint 1 |
 | 8 | User deletion: Design shows a Delete button on User Detail. Keep Delete (hard) or replace with Deactivate (soft)? | Anjali | Before sprint 2 |
 
@@ -497,7 +497,7 @@ FCM server-push deferred to v2.
 | Sprint | Deliverables |
 |---|---|
 | Sprint 1 (2 weeks) | Auth (login screen), worker report screen (tab toggle + mic + transcript), worker history screen |
-| Sprint 2 (2 weeks) | Backend API + Sarvam STT/translate integration, report submission E2E, offline queue |
+| Sprint 2 (2 weeks) | Backend API + Sarvam STT + Gemini translation integration, report submission E2E, offline queue |
 | Sprint 3 (2 weeks) | Gemini per-report analysis + chain attribution, submission result banner |
 | Sprint 4 (2 weeks) | Dashboard (KPI cards + chart + Report Details drill-down) |
 | Sprint 5 (2 weeks) | Admin Users list + User Detail + Create/Edit User, Settings screen |
